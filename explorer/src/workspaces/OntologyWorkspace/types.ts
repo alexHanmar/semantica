@@ -14,6 +14,41 @@ export interface OntologyEntry {
   tags: string[];
 }
 
+export interface OntologyGraphNode {
+  id: string;
+  type: string;
+  entity_type: string;
+  label: string;
+  technical_name: string;
+  description?: string | null;
+  properties: Record<string, unknown>;
+  external: boolean;
+}
+
+export interface OntologyGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  properties: Record<string, unknown>;
+}
+
+export interface OntologyGraphCounts {
+  class_count: number;
+  property_count: number;
+  individual_count: number;
+  concept_count: number;
+  external_count: number;
+}
+
+export interface OntologyGraphResponse {
+  uri: string;
+  name: string;
+  nodes: OntologyGraphNode[];
+  edges: OntologyGraphEdge[];
+  counts: OntologyGraphCounts;
+}
+
 export type AlignmentRelation =
   | "owl:equivalentClass"
   | "owl:equivalentProperty"

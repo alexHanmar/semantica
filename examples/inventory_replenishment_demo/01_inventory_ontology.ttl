@@ -1,0 +1,296 @@
+@prefix inv: <https://example.org/ontology/inventory-replenishment#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://example.org/ontology/inventory-replenishment>
+    a owl:Ontology ;
+    rdfs:label "库存补货演示本体"@zh ;
+    rdfs:comment "用于演示 SKU 库存监控、补货建议、人工审批和采购订单追踪的小型领域本体。"@zh ;
+    owl:versionInfo "1.0.0" .
+
+# -----------------------------------------------------------------------------
+# Classes
+# -----------------------------------------------------------------------------
+
+inv:SKU
+    a owl:Class ;
+    rdfs:label "SKU"@zh ;
+    rdfs:comment "企业库存管理中的最小可销售或可存储单元。"@zh ;
+    skos:definition "由唯一编码标识，并可关联品类、供应商和库存记录的库存单元。"@zh .
+
+inv:ProductCategory
+    a owl:Class ;
+    rdfs:label "商品品类"@zh ;
+    rdfs:comment "用于组织和归类 SKU 的商品分类。"@zh ;
+    skos:definition "一组具有共同业务特征的 SKU 集合。"@zh .
+
+inv:Store
+    a owl:Class ;
+    rdfs:label "门店"@zh ;
+    rdfs:comment "持有库存并面向客户销售商品的经营地点。"@zh ;
+    skos:definition "拥有唯一门店编码并承载库存记录的业务地点。"@zh .
+
+inv:Supplier
+    a owl:Class ;
+    rdfs:label "供应商"@zh ;
+    rdfs:comment "向企业供应 SKU 的外部组织。"@zh ;
+    skos:definition "具有交货周期和最小起订量等供应属性的组织。"@zh .
+
+inv:InventoryRecord
+    a owl:Class ;
+    rdfs:label "库存记录"@zh ;
+    rdfs:comment "某个 SKU 在某家门店某一时点的库存快照。"@zh ;
+    skos:definition "包含当前库存、安全库存、目标库存和日均销量的时点记录。"@zh .
+
+inv:ReplenishmentRecommendation
+    a owl:Class ;
+    rdfs:label "补货建议"@zh ;
+    rdfs:comment "根据库存事实和补货策略计算得到的待审核建议。"@zh ;
+    skos:definition "指向一个 SKU 和一家门店，并给出建议补货数量的业务对象。"@zh .
+
+inv:ReplenishmentDecision
+    a owl:Class ;
+    rdfs:label "补货决策"@zh ;
+    rdfs:comment "对补货建议进行批准、拒绝或延期的人工或 Agent 决策。"@zh ;
+    skos:definition "带有依据、结果、置信度和审核主体的可审计决策记录。"@zh .
+
+inv:ReplenishmentOrder
+    a owl:Class ;
+    rdfs:label "补货订单"@zh ;
+    rdfs:comment "补货建议获批后创建的采购或调拨订单。"@zh ;
+    skos:definition "记录订购 SKU、供应商、门店、数量和订单状态的执行对象。"@zh .
+
+# -----------------------------------------------------------------------------
+# Object properties
+# -----------------------------------------------------------------------------
+
+inv:belongsToCategory
+    a owl:ObjectProperty ;
+    rdfs:label "隶属于品类"@zh ;
+    rdfs:comment "将 SKU 关联到商品品类。"@zh ;
+    skos:definition "SKU 到商品品类的归属关系。"@zh ;
+    rdfs:domain inv:SKU ;
+    rdfs:range inv:ProductCategory .
+
+inv:suppliedBy
+    a owl:ObjectProperty ;
+    rdfs:label "由供应商供应"@zh ;
+    rdfs:comment "将 SKU 关联到其供应商。"@zh ;
+    skos:definition "SKU 到供应组织的供应关系。"@zh ;
+    rdfs:domain inv:SKU ;
+    rdfs:range inv:Supplier .
+
+inv:inventoryForSKU
+    a owl:ObjectProperty ;
+    rdfs:label "库存对应 SKU"@zh ;
+    rdfs:comment "指出库存记录所描述的 SKU。"@zh ;
+    skos:definition "库存记录到 SKU 的唯一业务关联。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range inv:SKU .
+
+inv:inventoryAtStore
+    a owl:ObjectProperty ;
+    rdfs:label "库存所在门店"@zh ;
+    rdfs:comment "指出库存记录所属的门店。"@zh ;
+    skos:definition "库存记录到门店的唯一业务关联。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range inv:Store .
+
+inv:needsReplenishment
+    a owl:ObjectProperty ;
+    rdfs:label "需要补货"@zh ;
+    rdfs:comment "表示某个 SKU 在某家门店需要补货。"@zh ;
+    skos:definition "由补货规则推导出的 SKU 到门店的风险关系。"@zh ;
+    rdfs:domain inv:SKU ;
+    rdfs:range inv:Store .
+
+inv:recommendationForSKU
+    a owl:ObjectProperty ;
+    rdfs:label "建议对应 SKU"@zh ;
+    rdfs:comment "将补货建议关联到目标 SKU。"@zh ;
+    skos:definition "补货建议到 SKU 的业务关联。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range inv:SKU .
+
+inv:recommendationForStore
+    a owl:ObjectProperty ;
+    rdfs:label "建议对应门店"@zh ;
+    rdfs:comment "将补货建议关联到目标门店。"@zh ;
+    skos:definition "补货建议到门店的业务关联。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range inv:Store .
+
+inv:generatedFromInventory
+    a owl:ObjectProperty ;
+    rdfs:label "生成自库存记录"@zh ;
+    rdfs:comment "指出补货建议使用的库存证据。"@zh ;
+    skos:definition "补货建议到原始库存快照的证据关系。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range inv:InventoryRecord .
+
+inv:createsOrder
+    a owl:ObjectProperty ;
+    rdfs:label "创建补货订单"@zh ;
+    rdfs:comment "表示获批建议创建了补货订单。"@zh ;
+    skos:definition "补货建议到最终执行订单的关系。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range inv:ReplenishmentOrder .
+
+inv:decisionBasedOnInventory
+    a owl:ObjectProperty ;
+    rdfs:label "决策依据库存记录"@zh ;
+    rdfs:comment "指出补货决策使用的库存证据。"@zh ;
+    skos:definition "补货决策到库存快照的可审计依据关系。"@zh ;
+    rdfs:domain inv:ReplenishmentDecision ;
+    rdfs:range inv:InventoryRecord .
+
+inv:decisionCreatesOrder
+    a owl:ObjectProperty ;
+    rdfs:label "决策创建订单"@zh ;
+    rdfs:comment "表示批准决策触发了补货订单。"@zh ;
+    skos:definition "补货决策到执行订单的因果关系。"@zh ;
+    rdfs:domain inv:ReplenishmentDecision ;
+    rdfs:range inv:ReplenishmentOrder .
+
+inv:orderSupplier
+    a owl:ObjectProperty ;
+    rdfs:label "订单供应商"@zh ;
+    rdfs:comment "指出补货订单的履约供应商。"@zh ;
+    skos:definition "补货订单到供应商的采购关系。"@zh ;
+    rdfs:domain inv:ReplenishmentOrder ;
+    rdfs:range inv:Supplier .
+
+inv:orderForSKU
+    a owl:ObjectProperty ;
+    rdfs:label "订单对应 SKU"@zh ;
+    rdfs:comment "指出补货订单采购的 SKU。"@zh ;
+    skos:definition "补货订单到 SKU 的业务关联。"@zh ;
+    rdfs:domain inv:ReplenishmentOrder ;
+    rdfs:range inv:SKU .
+
+inv:orderForStore
+    a owl:ObjectProperty ;
+    rdfs:label "订单对应门店"@zh ;
+    rdfs:comment "指出补货订单的收货门店。"@zh ;
+    skos:definition "补货订单到收货门店的业务关联。"@zh ;
+    rdfs:domain inv:ReplenishmentOrder ;
+    rdfs:range inv:Store .
+
+# -----------------------------------------------------------------------------
+# Datatype properties
+# -----------------------------------------------------------------------------
+
+inv:skuCode
+    a owl:DatatypeProperty ;
+    rdfs:label "SKU 编码"@zh ;
+    rdfs:comment "SKU 的唯一业务编码。"@zh ;
+    skos:definition "用于跨系统识别 SKU 的字符串编码。"@zh ;
+    rdfs:domain inv:SKU ;
+    rdfs:range xsd:string .
+
+inv:storeCode
+    a owl:DatatypeProperty ;
+    rdfs:label "门店编码"@zh ;
+    rdfs:comment "门店的唯一业务编码。"@zh ;
+    skos:definition "用于跨系统识别门店的字符串编码。"@zh ;
+    rdfs:domain inv:Store ;
+    rdfs:range xsd:string .
+
+inv:supplierCode
+    a owl:DatatypeProperty ;
+    rdfs:label "供应商编码"@zh ;
+    rdfs:comment "供应商的唯一业务编码。"@zh ;
+    skos:definition "用于跨系统识别供应商的字符串编码。"@zh ;
+    rdfs:domain inv:Supplier ;
+    rdfs:range xsd:string .
+
+inv:currentInventory
+    a owl:DatatypeProperty ;
+    rdfs:label "当前库存"@zh ;
+    rdfs:comment "库存快照时点的可用数量。"@zh ;
+    skos:definition "用于判断库存是否低于安全库存的非负整数。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range xsd:integer .
+
+inv:safetyStock
+    a owl:DatatypeProperty ;
+    rdfs:label "安全库存"@zh ;
+    rdfs:comment "用于吸收销量和交期波动的最低库存阈值。"@zh ;
+    skos:definition "当当前库存低于该数值时触发补货候选的非负整数。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range xsd:integer .
+
+inv:targetInventory
+    a owl:DatatypeProperty ;
+    rdfs:label "目标库存"@zh ;
+    rdfs:comment "补货完成后希望达到的库存水平。"@zh ;
+    skos:definition "用于计算基础建议补货量的非负整数。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range xsd:integer .
+
+inv:dailyAverageSales
+    a owl:DatatypeProperty ;
+    rdfs:label "日均销量"@zh ;
+    rdfs:comment "SKU 在门店近期的平均每日销量。"@zh ;
+    skos:definition "用于解释库存风险和目标库存合理性的非负数值。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range xsd:decimal .
+
+inv:snapshotDate
+    a owl:DatatypeProperty ;
+    rdfs:label "快照日期"@zh ;
+    rdfs:comment "库存记录反映业务状态的日期。"@zh ;
+    skos:definition "用于判断库存事实新鲜度的日历日期。"@zh ;
+    rdfs:domain inv:InventoryRecord ;
+    rdfs:range xsd:date .
+
+inv:leadTimeDays
+    a owl:DatatypeProperty ;
+    rdfs:label "交货周期天数"@zh ;
+    rdfs:comment "供应商从接单到交货的预计天数。"@zh ;
+    skos:definition "用于评估断货风险的正整数天数。"@zh ;
+    rdfs:domain inv:Supplier ;
+    rdfs:range xsd:integer .
+
+inv:minOrderQuantity
+    a owl:DatatypeProperty ;
+    rdfs:label "最小起订量"@zh ;
+    rdfs:comment "供应商接受单次订单的最小数量。"@zh ;
+    skos:definition "建议补货量需要按其整数倍向上取整的正整数。"@zh ;
+    rdfs:domain inv:Supplier ;
+    rdfs:range xsd:integer .
+
+inv:suggestedQuantity
+    a owl:DatatypeProperty ;
+    rdfs:label "建议补货量"@zh ;
+    rdfs:comment "补货策略计算得到的建议数量。"@zh ;
+    skos:definition "目标库存减当前库存并按最小起订量向上取整后的数量。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range xsd:integer .
+
+inv:recommendationStatus
+    a owl:DatatypeProperty ;
+    rdfs:label "建议状态"@zh ;
+    rdfs:comment "补货建议当前所处的审核状态。"@zh ;
+    skos:definition "例如 pending、approved 或 rejected 的状态字符串。"@zh ;
+    rdfs:domain inv:ReplenishmentRecommendation ;
+    rdfs:range xsd:string .
+
+inv:orderQuantity
+    a owl:DatatypeProperty ;
+    rdfs:label "订单数量"@zh ;
+    rdfs:comment "补货订单最终确定的订购数量。"@zh ;
+    skos:definition "经过审核后写入订单的正整数数量。"@zh ;
+    rdfs:domain inv:ReplenishmentOrder ;
+    rdfs:range xsd:integer .
+
+inv:orderStatus
+    a owl:DatatypeProperty ;
+    rdfs:label "订单状态"@zh ;
+    rdfs:comment "补货订单当前的执行状态。"@zh ;
+    skos:definition "例如 created、submitted、received 或 cancelled 的状态字符串。"@zh ;
+    rdfs:domain inv:ReplenishmentOrder ;
+    rdfs:range xsd:string .

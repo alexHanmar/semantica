@@ -8,6 +8,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -166,6 +173,7 @@ def create_app(
     from .routes.memories import router as memories_router
     from .routes.ontology import router as ontology_router
     from .routes.provenance import router as provenance_router
+    from .routes.settings import router as settings_router
     from .routes.sparql import router as sparql_router
     from .routes.temporal import router as temporal_router
     from .routes.vocabulary import router as vocabulary_router
@@ -182,6 +190,7 @@ def create_app(
     app.include_router(annotations_router, dependencies=_auth)
     app.include_router(sparql_router, dependencies=_auth)
     app.include_router(provenance_router, dependencies=_auth)
+    app.include_router(settings_router, dependencies=_auth)
     app.include_router(vocabulary_router, dependencies=_auth)
     app.include_router(ontology_router, dependencies=_auth)
 

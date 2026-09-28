@@ -152,6 +152,7 @@ This writes the compiled assets to `../semantica/static/`. The Python server the
 | `EXPLORER_CORS_CREDENTIALS` | `false` | Set to `true` to allow credentialed cross-origin requests (only needed behind an authenticating reverse proxy) |
 | `SEMANTICA_API_KEY` | *(unset)* | API key required on protected routes since v0.6.5; send it as the `X-API-Key` header. When unset, protected routes fail closed with `503`. |
 | `SEMANTICA_ALLOW_ANONYMOUS` | `false` | Set to `true` to opt into unauthenticated access (local development only). |
+| `SEMANTICA_EXPLORER_SETTINGS_PATH` | `~/.semantica/explorer-settings.json` | Path used for persistent named LLM configuration cards (provider, model, endpoint, and credential); secrets are stored owner-only and redacted from API responses |
 
 ---
 

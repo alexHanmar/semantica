@@ -1,0 +1,1 @@
+IF below_safety_stock(?sku, ?store) AND has_available_supplier(?sku, ?supplier) THEN needsReplenishment(?sku, ?store)

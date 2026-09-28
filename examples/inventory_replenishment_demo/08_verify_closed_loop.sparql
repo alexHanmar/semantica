@@ -1,0 +1,22 @@
+PREFIX prop: <http://semantica.local/prop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT
+  ?decisionLabel
+  ?outcome
+  ?orderLabel
+  ?orderQuantity
+  ?orderStatus
+  ?supplierName
+WHERE {
+  ?decision rdfs:label ?decisionLabel ;
+            prop:outcome ?outcome ;
+            prop:decisionCreatesOrder ?order .
+
+  ?order rdfs:label ?orderLabel ;
+         prop:orderQuantity ?orderQuantity ;
+         prop:orderStatus ?orderStatus ;
+         prop:orderSupplier ?supplier .
+
+  ?supplier rdfs:label ?supplierName .
+}

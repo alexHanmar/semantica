@@ -1,0 +1,2 @@
+below_safety_stock(https://example.org/ontology/inventory-replenishment#sku_coffee_500g, https://example.org/ontology/inventory-replenishment#store_shanghai_01)
+has_available_supplier(https://example.org/ontology/inventory-replenishment#sku_coffee_500g, https://example.org/ontology/inventory-replenishment#supplier_yunnan)

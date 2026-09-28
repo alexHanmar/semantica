@@ -3,36 +3,14 @@ import type {
   AlignmentSuggestion,
   OntologyAlignment,
   OntologyEntry,
+  OntologyGraphResponse,
   OntologyHealthResponse,
   ShaclGenerateResponse,
   ShaclShapesResponse,
   ShaclValidationResponse,
 } from "./types";
 
-export type OntologyGraphNode = {
-  id: string;
-  type: string;
-  // Required: /graph always classifies. Optional here would make a producer
-  // that forgets read as a graph of read-only nodes rather than a type error.
-  entity_type: string;
-  content?: string;
-  properties?: Record<string, unknown>;
-};
-
-export type OntologyGraphEdge = {
-  id?: string;
-  source: string;
-  target: string;
-  type: string;
-  weight?: number;
-  properties?: Record<string, unknown>;
-};
-
-export type OntologyGraphResponse = {
-  uri: string;
-  nodes: OntologyGraphNode[];
-  edges: OntologyGraphEdge[];
-};
+export type { OntologyGraphNode, OntologyGraphEdge, OntologyGraphResponse } from "./types";
 
 export type OntologyEntityOwner = {
   // Optional on purpose, unlike OntologyGraphNode.entity_type. There, a missing

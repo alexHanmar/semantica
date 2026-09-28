@@ -82,6 +82,45 @@ class TestProviderLimits:
             call_kwargs = mock_client.messages.create.call_args[1]
             assert call_kwargs["max_tokens"] == 9999
 
+    def test_anthropic_skips_thinking_block_for_text_response(self):
+        from semantica.semantic_extract.providers import AnthropicProvider
+
+        class ThinkingBlock:
+            type = "thinking"
+
+        class TextBlock:
+            type = "text"
+            text = "result"
+
+        with patch.object(AnthropicProvider, '_init_client', return_value=None):
+            provider = AnthropicProvider(api_key="fake")
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.content = [ThinkingBlock(), TextBlock()]
+            mock_client.messages.create.return_value = mock_response
+            provider.client = mock_client
+
+            assert provider.generate("prompt") == "result"
+
+    def test_anthropic_skips_thinking_block_for_structured_response(self):
+        from semantica.semantic_extract.providers import AnthropicProvider
+
+        with patch.object(AnthropicProvider, '_init_client', return_value=None):
+            provider = AnthropicProvider(api_key="fake")
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.content = [
+                {"type": "thinking", "thinking": "internal reasoning"},
+                {"type": "text", "text": '{"classes": [], "properties": []}'},
+            ]
+            mock_client.messages.create.return_value = mock_response
+            provider.client = mock_client
+
+            assert provider.generate_structured("prompt") == {
+                "classes": [],
+                "properties": [],
+            }
+
     def test_groq_max_completion_tokens(self):
         from semantica.semantic_extract.providers import GroqProvider
         

@@ -1,0 +1,102 @@
+{
+  "nodes": [
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "type": "owl:NamedIndividual",
+      "content": "山岚咖啡豆上海静安店补货建议",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#ReplenishmentRecommendation",
+        "businessType": "ReplenishmentRecommendation",
+        "suggestedQuantity": 48,
+        "recommendationStatus": "approved",
+        "calculation": "ceil((66 - 18) / 24) * 24 = 48",
+        "policyId": "POLICY-REPLENISH-001",
+        "createdAt": "2026-08-31T10:00:00+08:00"
+      }
+    },
+    {
+      "id": "decision_replenish_coffee_shanghai_20260831",
+      "type": "decision",
+      "content": "批准上海静安店山岚咖啡豆补货 48 袋",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#ReplenishmentDecision",
+        "category": "inventory_replenishment",
+        "scenario": "上海静安店山岚咖啡豆当前库存 18，低于安全库存 30",
+        "reasoning": "目标库存为 66，基础缺口为 48；供应商最小起订量为 24，建议量 48 已满足整倍数约束",
+        "outcome": "approved_48_units",
+        "confidence": 0.96,
+        "timestamp": "2026-08-31T10:05:00+08:00",
+        "decision_maker": "manual_demo_user",
+        "policyId": "POLICY-REPLENISH-001",
+        "humanApproved": true
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "type": "owl:NamedIndividual",
+      "content": "上海静安店山岚咖啡豆补货订单",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#ReplenishmentOrder",
+        "businessType": "ReplenishmentOrder",
+        "orderQuantity": 48,
+        "orderStatus": "created",
+        "createdAt": "2026-08-31T10:05:00+08:00"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "type": "recommendationForSKU"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#store_shanghai_01",
+      "type": "recommendationForStore"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#inventory_coffee_shanghai_20260831",
+      "type": "generatedFromInventory"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "type": "createsOrder"
+    },
+    {
+      "source": "decision_replenish_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#inventory_coffee_shanghai_20260831",
+      "type": "decisionBasedOnInventory"
+    },
+    {
+      "source": "decision_replenish_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#recommendation_coffee_shanghai_20260831",
+      "type": "approvedRecommendation"
+    },
+    {
+      "source": "decision_replenish_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "type": "decisionCreatesOrder"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#supplier_yunnan",
+      "type": "orderSupplier"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "type": "orderForSKU"
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#order_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#store_shanghai_01",
+      "type": "orderForStore"
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+@prefix inv: <https://example.org/ontology/inventory-replenishment#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+inv:InventoryRecordShape
+    a sh:NodeShape ;
+    sh:targetClass inv:InventoryRecord ;
+    sh:property [
+        sh:path inv:inventoryForSKU ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "库存记录必须且只能关联一个 SKU。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:inventoryAtStore ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "库存记录必须且只能关联一家门店。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:currentInventory ;
+        sh:minCount 1 ;
+        sh:message "库存记录必须包含当前库存。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:safetyStock ;
+        sh:minCount 1 ;
+        sh:message "库存记录必须包含安全库存。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:targetInventory ;
+        sh:minCount 1 ;
+        sh:message "库存记录必须包含目标库存。"@zh
+    ] .
+
+inv:ReplenishmentRecommendationShape
+    a sh:NodeShape ;
+    sh:targetClass inv:ReplenishmentRecommendation ;
+    sh:property [
+        sh:path inv:recommendationForSKU ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "补货建议必须且只能关联一个 SKU。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:recommendationForStore ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "补货建议必须且只能关联一家门店。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:generatedFromInventory ;
+        sh:minCount 1 ;
+        sh:message "补货建议必须保留其库存证据。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:suggestedQuantity ;
+        sh:minCount 1 ;
+        sh:message "补货建议必须包含建议数量。"@zh
+    ] .
+
+inv:ReplenishmentOrderShape
+    a sh:NodeShape ;
+    sh:targetClass inv:ReplenishmentOrder ;
+    sh:property [
+        sh:path inv:orderSupplier ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "补货订单必须且只能关联一个供应商。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:orderForSKU ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "补货订单必须且只能关联一个 SKU。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:orderForStore ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "补货订单必须且只能关联一家门店。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:orderQuantity ;
+        sh:minCount 1 ;
+        sh:message "补货订单必须包含订单数量。"@zh
+    ] ;
+    sh:property [
+        sh:path inv:orderStatus ;
+        sh:minCount 1 ;
+        sh:message "补货订单必须包含订单状态。"@zh
+    ] .

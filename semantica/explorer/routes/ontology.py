@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..session import GraphSession
 from ..dependencies import get_session
+from ..llm_settings import LLMSettingsError, resolve_llm_runtime_config
 from ..utils.rdf_parser import _safe_parse_rdf
 try:
     from rdflib.namespace import DCT, DC
@@ -119,6 +120,34 @@ _ALIGNMENT_RELATIONS: Dict[str, str] = {
     "skos:narrowMatch": "http://www.w3.org/2004/02/skos/core#narrowMatch",
     "skos:relatedMatch": "http://www.w3.org/2004/02/skos/core#relatedMatch",
 }
+
+# Relations that describe ontology structure rather than instance-level data.
+# Property domain/range edges are intentionally kept: the visual editor folds
+# each property node plus these two edges into a readable Domain -> Range edge.
+_ONTOLOGY_GRAPH_EDGE_TYPES = frozenset({
+    "rdf:type",
+    "rdfs:domain",
+    "rdfs:range",
+    "rdfs:subClassOf",
+    "rdfs:subPropertyOf",
+    "owl:equivalentClass",
+    "owl:equivalentProperty",
+    "owl:inverseOf",
+    "owl:disjointWith",
+    "owl:sameAs",
+    "skos:broader",
+    "skos:narrower",
+    "skos:related",
+    "skos:inScheme",
+    "skos:exactMatch",
+    "skos:closeMatch",
+    "skos:broadMatch",
+    "skos:narrowMatch",
+    "skos:relatedMatch",
+})
+
+_STRUCTURE_EDGE_TYPES = _STRUCTURE_EDGE_TYPES | _ONTOLOGY_GRAPH_EDGE_TYPES
+_SCHEMA_NODE_TYPES = _SCHEMA_NODE_TYPES | _INDIVIDUAL_TYPES
 
 _INGEST_FORMAT_SUFFIXES: Dict[str, str] = {
     "turtle": ".ttl",
@@ -225,6 +254,9 @@ class CreateOntologyRequest(BaseModel):
     schema_text: Optional[str] = None
     provider: Optional[str] = None
     model: Optional[str] = None
+    api_key: Optional[str] = None
+    auth_token: Optional[str] = None
+    base_url: Optional[str] = None
 
 
 class OntologySearchResult(BaseModel):
@@ -251,12 +283,6 @@ class EntityDetailResponse(BaseModel):
     range: List[str] = Field(default_factory=list)
     instance_count: int = 0
     properties: Dict[str, Any] = Field(default_factory=dict)
-
-
-class OntologyGraphResponse(BaseModel):
-    uri: str
-    nodes: List[Dict[str, Any]] = Field(default_factory=list)
-    edges: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class SKOSScheme(BaseModel):
@@ -296,6 +322,42 @@ class LoadOntologyResponse(BaseModel):
     nodes_added: int = 0
     edges_added: int = 0
     format: str = "unknown"
+
+
+class OntologyGraphNode(BaseModel):
+    id: str
+    type: str
+    entity_type: str
+    label: str
+    content: str = ""
+    technical_name: str
+    description: Optional[str] = None
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    external: bool = False
+
+
+class OntologyGraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    type: str
+    properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OntologyGraphCounts(BaseModel):
+    class_count: int = 0
+    property_count: int = 0
+    individual_count: int = 0
+    concept_count: int = 0
+    external_count: int = 0
+
+
+class OntologyGraphResponse(BaseModel):
+    uri: str
+    name: str
+    nodes: List[OntologyGraphNode] = Field(default_factory=list)
+    edges: List[OntologyGraphEdge] = Field(default_factory=list)
+    counts: OntologyGraphCounts = Field(default_factory=OntologyGraphCounts)
 
 
 class ToggleResponse(BaseModel):
@@ -744,6 +806,127 @@ def _convert_ontology_to_graph(ontology_dict: Dict[str, Any]) -> Tuple[List[Dict
     return nodes, edges
 
 
+def _generated_term_uri(namespace: str, value: Any) -> Optional[str]:
+    """Resolve a generated class/property reference against the requested namespace."""
+    if not isinstance(value, str):
+        return None
+    term = value.strip()
+    if not term:
+        return None
+    if urlparse(term).scheme:
+        return term
+    return f"{namespace}/{term.lstrip('/#')}"
+
+
+def _generated_text(value: Any, fallback: str = "") -> str:
+    """Normalize optional LLM text fields without stringifying containers."""
+    if isinstance(value, str):
+        return value.strip() or fallback
+    return fallback
+
+
+def _convert_generated_ontology_to_graph(
+    ontology_dict: Dict[str, Any],
+    namespace: str,
+    ontology_uri: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Convert OntologyEngine output, including multi-valued domains and ranges."""
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    for cls in ontology_dict.get("classes", []):
+        if not isinstance(cls, dict):
+            continue
+        name = _generated_text(cls.get("name") or cls.get("Name"))
+        cls_uri = _generated_term_uri(namespace, name)
+        if not cls_uri:
+            continue
+        label = _generated_text(cls.get("label") or cls.get("Label"), name)
+        comment = _generated_text(
+            cls.get("comment") or cls.get("description") or cls.get("Description")
+        )
+        properties = {
+            "rdfs:label": label,
+            "rdfs:comment": comment,
+        }
+        if ontology_uri:
+            properties["source_ontology"] = ontology_uri
+        nodes.append({
+            "id": cls_uri,
+            "type": "owl:Class",
+            "content": name,
+            "properties": properties,
+        })
+
+        parents = (
+            cls.get("superclasses")
+            or cls.get("parents")
+            or cls.get("parent")
+            or cls.get("Parent")
+        )
+        for parent in _as_uri_list(parents):
+            parent_uri = _generated_term_uri(namespace, parent)
+            if parent_uri:
+                edges.append({
+                    "source": cls_uri,
+                    "target": parent_uri,
+                    "type": "rdfs:subClassOf",
+                    "weight": 1.0,
+                })
+
+    for prop in ontology_dict.get("properties", []):
+        if not isinstance(prop, dict):
+            continue
+        name = _generated_text(prop.get("name") or prop.get("Name"))
+        prop_uri = _generated_term_uri(namespace, name)
+        if not prop_uri:
+            continue
+        label = _generated_text(prop.get("label") or prop.get("Label"), name)
+        comment = _generated_text(
+            prop.get("comment") or prop.get("description") or prop.get("Description")
+        )
+        property_type = _generated_text(prop.get("type") or prop.get("Type"), "object").lower()
+        node_type = (
+            "owl:DatatypeProperty"
+            if property_type in {"data", "datatype", "dataproperty", "datatypeproperty"}
+            else "owl:ObjectProperty"
+        )
+        properties = {
+            "rdfs:label": label,
+            "rdfs:comment": comment,
+        }
+        if ontology_uri:
+            properties["source_ontology"] = ontology_uri
+        nodes.append({
+            "id": prop_uri,
+            "type": node_type,
+            "content": name,
+            "properties": properties,
+        })
+
+        for domain in _as_uri_list(prop.get("domain") or prop.get("Domain")):
+            domain_uri = _generated_term_uri(namespace, domain)
+            if domain_uri:
+                edges.append({
+                    "source": prop_uri,
+                    "target": domain_uri,
+                    "type": "rdfs:domain",
+                    "weight": 1.0,
+                })
+
+        for range_value in _as_uri_list(prop.get("range") or prop.get("Range")):
+            range_uri = _generated_term_uri(namespace, range_value)
+            if range_uri:
+                edges.append({
+                    "source": prop_uri,
+                    "target": range_uri,
+                    "type": "rdfs:range",
+                    "weight": 1.0,
+                })
+
+    return nodes, edges
+
+
 def _extract_namespace(uri: str) -> Optional[str]:
     if "#" in uri:
         return uri.rsplit("#", 1)[0] + "#"
@@ -781,6 +964,15 @@ def _node_source_ontology(node: Dict[str, Any]) -> Optional[str]:
     )
 
 
+def _ownership_namespace(uri: str) -> str:
+    """Accept the root resource convention used by generated ontologies."""
+    stem = uri.rstrip("#/")
+    for marker in ("#ontology", "/ontology"):
+        if stem.lower().endswith(marker):
+            return stem[:-len(marker)].rstrip("#/")
+    return stem
+
+
 def _node_belongs_to_ontology(
     node: Dict[str, Any],
     ontology_uri: str,
@@ -798,12 +990,12 @@ def _node_belongs_to_ontology(
             for candidate in known_ontology_uris
             if nid == candidate
             or nid.startswith(
-                (candidate.rstrip("#/") + "#", candidate.rstrip("#/") + "/")
+                (_ownership_namespace(candidate) + "#", _ownership_namespace(candidate) + "/")
             )
         ]
         if namespace_owners and max(namespace_owners, key=len) != ontology_uri:
             return False
-    stem = ontology_uri.rstrip("#/")
+    stem = _ownership_namespace(ontology_uri)
     if not nid.startswith((stem + "#", stem + "/")):
         return False
     # Prefix ownership only extends to names minted directly in the
@@ -847,7 +1039,7 @@ def _resolve_owning_ontology(
 
     longest_namespace: Optional[str] = None
     for candidate in known_ontology_uris:
-        stem = candidate.rstrip("#/")
+        stem = _ownership_namespace(candidate)
         if not nid.startswith((stem + "#", stem + "/")):
             continue
         if longest_namespace is None or len(candidate) > len(longest_namespace):
@@ -858,7 +1050,7 @@ def _resolve_owning_ontology(
     # Prefix ownership only extends to names minted directly in the namespace.
     # A further delimiter marks a nested vocabulary, which stays unowned until
     # it is registered or carries an explicit owner.
-    local_name = nid[len(longest_namespace.rstrip("#/")) + 1 :]
+    local_name = nid[len(_ownership_namespace(longest_namespace)) + 1 :]
     if "#" in local_name or "/" in local_name:
         return None
     return longest_namespace
@@ -959,14 +1151,135 @@ def _data_graph_entities(nodes: List[Dict[str, Any]], ontology_uri: Optional[str
     return result
 
 
+def _is_datatype_uri(uri: str) -> bool:
+    return uri.startswith((
+        "xsd:",
+        "http://www.w3.org/2001/XMLSchema#",
+        "https://www.w3.org/2001/XMLSchema#",
+    ))
+
+
+def _build_ontology_graph_response(
+    uri: str,
+    name: str,
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    owned_ids: Optional[set[str]] = None,
+) -> OntologyGraphResponse:
+    """Build the bounded, ontology-owned graph consumed by the visual editor.
+
+    The application graph may also contain ordinary business data.  Only
+    schema entities owned by ``uri`` and their outgoing structural relations
+    are returned.  Referenced external nodes (most commonly XSD datatypes or
+    imported superclasses) are retained so ranges and hierarchy edges remain
+    renderable.
+    """
+    owned_nodes = [
+        node for node in nodes
+        if (str(node.get("id", "")) in owned_ids if owned_ids is not None
+            else _node_belongs_to_ontology(node, uri))
+    ]
+    owned_by_id = {
+        str(node.get("id")): node
+        for node in owned_nodes
+        if node.get("id")
+    }
+    all_by_id = {
+        str(node.get("id")): node
+        for node in nodes
+        if node.get("id")
+    }
+
+    graph_edges: List[OntologyGraphEdge] = []
+    referenced_ids = set(owned_by_id)
+    for index, edge in enumerate(edges):
+        source = str(edge.get("source", ""))
+        target = str(edge.get("target", ""))
+        edge_type = _uri_to_prefix(str(edge.get("type", "")))
+        if (
+            not source
+            or not target
+            or source not in owned_by_id
+            or edge_type not in _ONTOLOGY_GRAPH_EDGE_TYPES
+        ):
+            continue
+
+        referenced_ids.add(target)
+        graph_edges.append(OntologyGraphEdge(
+            id=str(edge.get("id") or f"{source}|{edge_type}|{target}|{index}"),
+            source=source,
+            target=target,
+            type=edge_type,
+            properties=dict(edge.get("properties", {}) or {}),
+        ))
+
+    graph_nodes: List[OntologyGraphNode] = []
+    for node_id in sorted(referenced_ids):
+        raw = all_by_id.get(node_id, {
+            "id": node_id,
+            "type": "datatype" if _is_datatype_uri(node_id) else "external",
+            "content": _label_from_uri(node_id),
+            "properties": {},
+        })
+        entity_type = _classify_node_type(str(raw.get("type", "")))
+        graph_nodes.append(OntologyGraphNode(
+            id=node_id,
+            type=str(raw.get("type", "external")),
+            entity_type=entity_type,
+            label=_node_label(raw) or _label_from_uri(node_id),
+            content=str(raw.get("content", "")),
+            technical_name=_label_from_uri(node_id),
+            description=_entity_description(raw),
+            properties=dict(raw.get("properties", {}) or {}),
+            external=node_id not in owned_by_id,
+        ))
+
+    owned_types = [
+        _classify_node_type(str(node.get("type", "")))
+        for node in owned_by_id.values()
+    ]
+    counts = OntologyGraphCounts(
+        class_count=owned_types.count("class"),
+        property_count=owned_types.count("property"),
+        individual_count=owned_types.count("individual"),
+        concept_count=owned_types.count("concept") + owned_types.count("scheme"),
+        external_count=sum(1 for node in graph_nodes if node.external),
+    )
+
+    return OntologyGraphResponse(
+        uri=uri,
+        name=name,
+        nodes=graph_nodes,
+        edges=graph_edges,
+        counts=counts,
+    )
+
+
 def _ontology_dict_from_nodes(uri: str, name: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> Dict[str, Any]:
     classes = []
     properties = []
+    technical_names = {
+        node.get("id", ""): _label_from_uri(node.get("id", ""))
+        for node in nodes
+        if node.get("id")
+    }
+    entity_namespace = next(
+        (
+            namespace
+            for node in nodes
+            if node.get("id")
+            for namespace in [_extract_namespace(node.get("id", ""))]
+            if namespace
+        ),
+        _ontology_namespace(uri),
+    )
+
     for node in nodes:
         entity_type = _classify_node_type(node.get("type", ""))
         label = _node_label(node) or node.get("id", "")
+        technical_name = technical_names.get(node.get("id", "")) or label
         item = {
-            "name": label,
+            "name": technical_name,
             "uri": node.get("id", ""),
             "label": label,
             "description": _entity_description(node) or "",
@@ -974,18 +1287,30 @@ def _ontology_dict_from_nodes(uri: str, name: str, nodes: List[Dict[str, Any]], 
         if entity_type == "class":
             classes.append(item)
         elif entity_type == "property":
+            property_type = (
+                "object" if "ObjectProperty" in node.get("type", "") else "datatype"
+            )
             domain = [
-                edge.get("target", "")
+                technical_names.get(edge.get("target", ""), edge.get("target", ""))
                 for edge in edges
                 if edge.get("source") == node.get("id") and edge.get("type") == "rdfs:domain"
             ]
             range_ = [
-                edge.get("target", "")
+                technical_names.get(edge.get("target", ""), edge.get("target", ""))
                 for edge in edges
                 if edge.get("source") == node.get("id") and edge.get("type") == "rdfs:range"
             ]
+            if property_type == "datatype":
+                range_ = [
+                    value.split(":", 1)[1]
+                    if value.startswith("xsd:")
+                    else value.rsplit("#", 1)[1]
+                    if value.startswith("http://www.w3.org/2001/XMLSchema#")
+                    else value
+                    for value in range_
+                ]
             item.update({
-                "type": "object" if "ObjectProperty" in node.get("type", "") else "datatype",
+                "type": property_type,
                 "domain": domain,
                 "range": range_,
                 "required": False,
@@ -994,7 +1319,7 @@ def _ontology_dict_from_nodes(uri: str, name: str, nodes: List[Dict[str, Any]], 
 
     return {
         "name": name,
-        "namespace": _ontology_namespace(uri),
+        "namespace": {"base_uri": entity_namespace},
         "classes": classes,
         "properties": properties,
     }
@@ -1409,7 +1734,9 @@ async def list_registry(
     # Discover ontology-type nodes from live graph not yet registered
     all_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
 
-    # Count entity types per ontology URI via scheme_uri property
+    # Discover ontology roots first, then count their member entities. Some
+    # generated ontologies carry explicit source_ontology metadata; older ones
+    # are associated by their URI namespace instead.
     class_counts: Dict[str, int] = {}
     concept_counts: Dict[str, int] = {}
     prop_counts: Dict[str, int] = {}
@@ -1419,18 +1746,34 @@ async def list_registry(
         ntype = node.get("type", "")
         nid = node.get("id", "")
         etype = _classify_node_type(ntype)
-        scheme_uri = node.get("properties", {}).get("scheme_uri") or node.get("properties", {}).get("uri")
-
         if etype == "ontology" or etype == "scheme":
             if nid and nid not in registry:
                 implicit[nid] = node
-        elif scheme_uri:
-            if etype == "class":
-                class_counts[scheme_uri] = class_counts.get(scheme_uri, 0) + 1
-            elif etype == "concept":
-                concept_counts[scheme_uri] = concept_counts.get(scheme_uri, 0) + 1
-            elif etype == "property":
-                prop_counts[scheme_uri] = prop_counts.get(scheme_uri, 0) + 1
+
+    known_ontology_uris = set(registry) | set(implicit)
+    for node in all_nodes:
+        etype = _classify_node_type(node.get("type", ""))
+        if etype not in {"class", "concept", "property"}:
+            continue
+
+        owner = _node_source_ontology(node)
+        if not owner:
+            matching_uris = [
+                uri
+                for uri in known_ontology_uris
+                if _node_belongs_to_ontology(node, uri)
+            ]
+            # Prefer the most specific registered root when namespaces overlap.
+            owner = max(matching_uris, key=len) if matching_uris else None
+        if not owner:
+            continue
+
+        if etype == "class":
+            class_counts[owner] = class_counts.get(owner, 0) + 1
+        elif etype == "concept":
+            concept_counts[owner] = concept_counts.get(owner, 0) + 1
+        elif etype == "property":
+            prop_counts[owner] = prop_counts.get(owner, 0) + 1
 
     result: List[OntologyEntry] = []
 
@@ -1462,7 +1805,7 @@ async def list_registry(
         result.append(OntologyEntry(
             uri=nid,
             name=name,
-            description=props.get("description"),
+            description=props.get("description") or props.get("rdfs:comment"),
             format=props.get("format", "unknown"),
             status="external",
             version=props.get("version") or props.get("owl:versionInfo"),
@@ -1663,9 +2006,22 @@ async def create_ontology(
     
     # Initialize OntologyEngine with session's graph store
     engine_config = {"store": session.graph.store if hasattr(session.graph, "store") else None}
-    if body.provider or body.model:
-        engine_config["provider"] = body.provider
-        engine_config["model"] = body.model
+    if body.mode == "text":
+        request_overrides = {
+            key: getattr(body, key)
+            for key in ("provider", "model", "api_key", "auth_token", "base_url")
+            if getattr(body, key)
+        }
+        try:
+            llm_config = resolve_llm_runtime_config(request_overrides)
+        except LLMSettingsError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        configured_provider = llm_config.get("provider") or "openai"
+        engine_config["provider"] = configured_provider
+        for key in ("model", "api_key", "auth_token", "base_url"):
+            if llm_config.get(key):
+                engine_config[key] = llm_config[key]
     
     nodes: List[Dict[str, Any]] = [{
         "id": onto_uri,
@@ -1687,61 +2043,11 @@ async def create_ontology(
             
             # Convert OntologyEngine result to graph nodes/edges
             if isinstance(result, dict):
-                for cls in result.get("classes", []):
-                    cls_uri = f"{ns}/{cls.get('name', uuid.uuid4().hex[:6])}"
-                    nodes.append({
-                        "id": cls_uri,
-                        "type": "owl:Class",
-                        "content": cls.get("name", ""),
-                        "properties": {
-                            "rdfs:label": cls.get("name", ""),
-                            "rdfs:comment": cls.get("description", ""),
-                        },
-                    })
-                
-                # Add property edges
-                for prop in result.get("properties", []):
-                    prop_uri = f"{ns}/{prop.get('name', uuid.uuid4().hex[:6])}"
-                    
-                    nodes.append({
-                        "id": prop_uri,
-                        "type": "owl:ObjectProperty",
-                        "content": prop.get("name", ""),
-                        "properties": {"rdfs:label": prop.get("name", "")},
-                    })
-                    
-                    # Only create domain/range edges if domain/range are specified
-                    domain = prop.get('domain')
-                    if domain and domain.strip():
-                        domain_uri = f"{ns}/{domain}"
-                        edges.append({
-                            "source": prop_uri,
-                            "target": domain_uri,
-                            "type": "rdfs:domain",
-                            "weight": 1.0,
-                        })
-                    
-                    range_val = prop.get('range')
-                    if range_val and range_val.strip():
-                        range_uri = f"{ns}/{range_val}"
-                        edges.append({
-                            "source": prop_uri,
-                            "target": range_uri,
-                            "type": "rdfs:range",
-                            "weight": 1.0,
-                        })
-                
-                # Add subclass edges
-                for cls in result.get("classes", []):
-                    cls_uri = f"{ns}/{cls.get('name', '')}"
-                    for parent in cls.get("superclasses", []):
-                        parent_uri = f"{ns}/{parent}"
-                        edges.append({
-                            "source": cls_uri,
-                            "target": parent_uri,
-                            "type": "rdfs:subClassOf",
-                            "weight": 1.0,
-                        })
+                generated_nodes, generated_edges = _convert_generated_ontology_to_graph(
+                    result, ns, onto_uri
+                )
+                nodes.extend(generated_nodes)
+                edges.extend(generated_edges)
             
             logger.info(f"Generated ontology from sample data with {len(nodes)} nodes, {len(edges)} edges")
             
@@ -1753,65 +2059,22 @@ async def create_ontology(
         try:
             from ...ontology import OntologyEngine
             engine = OntologyEngine(**engine_config)
-            result = await asyncio.to_thread(engine.from_text, body.schema_text, provider=body.provider, model=body.model)
+            result = await asyncio.to_thread(
+                engine.from_text,
+                body.schema_text,
+                provider=body.provider,
+                model=body.model,
+                base_uri=f"{ns}/",
+                name=body.name,
+            )
             
             # Convert OntologyEngine result to graph nodes/edges
             if isinstance(result, dict):
-                for cls in result.get("classes", []):
-                    cls_uri = f"{ns}/{cls.get('name', uuid.uuid4().hex[:6])}"
-                    nodes.append({
-                        "id": cls_uri,
-                        "type": "owl:Class",
-                        "content": cls.get("name", ""),
-                        "properties": {
-                            "rdfs:label": cls.get("name", ""),
-                            "rdfs:comment": cls.get("description", ""),
-                        },
-                    })
-                
-                # Add property edges
-                for prop in result.get("properties", []):
-                    prop_uri = f"{ns}/{prop.get('name', uuid.uuid4().hex[:6])}"
-                    
-                    nodes.append({
-                        "id": prop_uri,
-                        "type": "owl:ObjectProperty",
-                        "content": prop.get("name", ""),
-                        "properties": {"rdfs:label": prop.get("name", "")},
-                    })
-                    
-                    # Only create domain/range edges if domain/range are specified
-                    domain = prop.get('domain')
-                    if domain and domain.strip():
-                        domain_uri = f"{ns}/{domain}"
-                        edges.append({
-                            "source": prop_uri,
-                            "target": domain_uri,
-                            "type": "rdfs:domain",
-                            "weight": 1.0,
-                        })
-                    
-                    range_val = prop.get('range')
-                    if range_val and range_val.strip():
-                        range_uri = f"{ns}/{range_val}"
-                        edges.append({
-                            "source": prop_uri,
-                            "target": range_uri,
-                            "type": "rdfs:range",
-                            "weight": 1.0,
-                        })
-                
-                # Add subclass edges
-                for cls in result.get("classes", []):
-                    cls_uri = f"{ns}/{cls.get('name', '')}"
-                    for parent in cls.get("superclasses", []):
-                        parent_uri = f"{ns}/{parent}"
-                        edges.append({
-                            "source": cls_uri,
-                            "target": parent_uri,
-                            "type": "rdfs:subClassOf",
-                            "weight": 1.0,
-                        })
+                generated_nodes, generated_edges = _convert_generated_ontology_to_graph(
+                    result, ns, onto_uri
+                )
+                nodes.extend(generated_nodes)
+                edges.extend(generated_edges)
             
             logger.info(f"Generated ontology from text with {len(nodes)} nodes, {len(edges)} edges")
             
@@ -1835,6 +2098,7 @@ async def create_ontology(
         status="draft",
         version="0.1.0",
         class_count=sum(1 for n in nodes if n.get("type") == "owl:Class"),
+        property_count=sum(1 for n in nodes if n.get("type") in _PROPERTY_TYPES),
         loaded_at=datetime.now(timezone.utc).isoformat(),
         enabled=True,
         tags=body.tags,
@@ -1996,14 +2260,13 @@ async def get_ontology_graph(
             str(edge.get("id", "")),
         )
     )
-    # Annotate copies: session node dicts may be cached and shared with other callers.
-    return OntologyGraphResponse(
+    entry = _get_registry(request).get(uri)
+    return _build_ontology_graph_response(
         uri=uri,
-        nodes=[
-            {**node, "entity_type": _classify_node_type(node.get("type", ""))}
-            for node in selected_nodes
-        ],
+        name=entry.name if entry else _node_label(core_nodes_by_id.get(uri, {})) or uri,
+        nodes=selected_nodes,
         edges=selected_edges,
+        owned_ids=core_node_ids,
     )
 
 

@@ -12,6 +12,7 @@ import {
   Route,
   Scale,
   Search,
+  Settings,
   Settings2,
   ShieldCheck,
   type LucideIcon,
@@ -20,6 +21,8 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { ExploreWorkspaceTabs, type ExploreView } from './ExploreWorkspaceTabs';
 import { fetchAgentMemoryAvailability } from './explorerCapabilities';
 import { hasOntologyUrlState } from './workspaces/OntologyWorkspace/ontologyUrlState';
+import { LLMSettingsModal } from './settings/LLMSettingsModal';
+import { OPEN_LLM_SETTINGS_EVENT } from './settings/llmSettings';
 
 const DecisionWorkspace = lazy(() => import('./workspaces/DecisionWorkspace/DecisionWorkspace').then((module) => ({ default: module.DecisionWorkspace })));
 const DiffMergeWorkspace = lazy(() => import('./workspaces/DiffMergeWorkspace/DiffMergeWorkspace').then((module) => ({ default: module.DiffMergeWorkspace })));
@@ -555,6 +558,12 @@ const shellStyles = `
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
+  }
+
+  .global-settings-button {
+    margin-top: auto;
+    min-height: 64px;
+    flex-shrink: 0;
   }
 
   .workspace-shell {
@@ -1817,6 +1826,13 @@ export default function App() {
     setExploreDraftDirty(false);
     setActiveWorkspace(nextWorkspace);
   };
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const openSettings = () => setSettingsOpen(true);
+    window.addEventListener(OPEN_LLM_SETTINGS_EVENT, openSettings);
+    return () => window.removeEventListener(OPEN_LLM_SETTINGS_EVENT, openSettings);
+  }, []);
 
 
   const renderWorkspace = () => {
@@ -2026,9 +2042,19 @@ export default function App() {
               <span className="nav-label">{label}</span>
             </button>
           ))}
+          <button
+            className="nav-button global-settings-button"
+            data-active={settingsOpen}
+            onClick={() => setSettingsOpen(true)}
+            title="Global application settings"
+          >
+            <Settings size={20} />
+            <span className="nav-label">Settings</span>
+          </button>
         </aside>
         {renderWorkspace()}
       </div>
+      {settingsOpen ? <LLMSettingsModal open onClose={() => setSettingsOpen(false)} /> : null}
     </QueryClientProvider>
   );
 }

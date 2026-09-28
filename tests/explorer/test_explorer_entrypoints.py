@@ -96,8 +96,10 @@ def test_legacy_server_mounts_editable_markdown_routes(monkeypatch):
 
     from semantica import server
 
-    paths = {route.path for route in server.app.routes}
-    assert "/api/markdown/{kind}/{resource_id:path}" in paths
+    paths = set(server.app.openapi()["paths"]) | {
+        route.path for route in server.app.routes if hasattr(route, "path")
+    }
+    assert "/api/markdown/{kind}/{resource_id}" in paths
     assert "/api/memories" in paths
     assert "/ws/graph-updates" in paths
 

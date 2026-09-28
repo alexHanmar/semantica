@@ -16,12 +16,29 @@ class LLMOntologyGenerator:
         self.provider_name = provider
         self.model = model
         self.config = config
-        self.provider = create_provider(provider, model=model) if provider else None
+        provider_config = {
+            key: value
+            for key, value in config.items()
+            if key in {"api_key", "auth_token", "base_url", "temperature", "max_tokens"}
+            and value is not None
+        }
+        if model is not None:
+            provider_config["model"] = model
+        self.provider = create_provider(provider, **provider_config) if provider else None
 
     def set_provider(self, provider: str, model: Optional[str] = None, **kwargs):
         self.provider_name = provider
         self.model = model or self.model
-        self.provider = create_provider(provider, model=self.model, **kwargs)
+        self.config.update({key: value for key, value in kwargs.items() if value is not None})
+        provider_config = {
+            key: value
+            for key, value in self.config.items()
+            if key in {"api_key", "auth_token", "base_url", "temperature", "max_tokens"}
+            and value is not None
+        }
+        if self.model is not None:
+            provider_config["model"] = self.model
+        self.provider = create_provider(provider, **provider_config)
 
     def generate_ontology_from_text(self, text: str, **options) -> Dict[str, Any]:
         if not self.provider:

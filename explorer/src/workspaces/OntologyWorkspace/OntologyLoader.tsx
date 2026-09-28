@@ -1,14 +1,22 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
   FileUp,
   Globe,
+  KeyRound,
   Loader2,
   Plus,
+  Settings,
   X,
 } from "lucide-react";
+import {
+  LLM_SETTINGS_CHANGED_EVENT,
+  loadLLMSettings,
+  openGlobalLLMSettings,
+  type LLMSettingsStatus,
+} from "../../settings/llmSettings";
 
 type LoaderMode = "url" | "file" | "create";
 type CreateMode = "scratch" | "data" | "text";
@@ -510,11 +518,47 @@ function CreateNewPanel({ onLoaded }: { onLoaded: () => void }) {
   const [tags, setTags] = useState("");
   const [sampleData, setSampleData] = useState("");
   const [schemaText, setSchemaText] = useState("");
+  const [llmSettings, setLlmSettings] = useState<LLMSettingsStatus | null>(null);
+  const [llmSettingsState, setLlmSettingsState] = useState<"loading" | "ready" | "error">("loading");
   const [createState, setCreateState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
+  useEffect(() => {
+    let active = true;
+    const refreshSettings = () => {
+      setLlmSettingsState("loading");
+      loadLLMSettings()
+        .then((status) => {
+          if (!active) return;
+          setLlmSettings(status);
+          setLlmSettingsState("ready");
+        })
+        .catch(() => {
+          if (!active) return;
+          setLlmSettingsState("error");
+        });
+    };
+    refreshSettings();
+    window.addEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshSettings);
+    return () => {
+      active = false;
+      window.removeEventListener(LLM_SETTINGS_CHANGED_EVENT, refreshSettings);
+    };
+  }, []);
+
   const handleCreate = async () => {
     if (!name.trim() || !namespace.trim()) return;
+    if (createMode === "text" && !schemaText.trim()) {
+      setCreateState("error");
+      setErrorMsg("Describe the ontology schema before creating it.");
+      return;
+    }
+    if (createMode === "text" && !llmSettings?.configured) {
+      setCreateState("error");
+      setErrorMsg("Configure a global LLM provider before using text-based generation.");
+      openGlobalLLMSettings();
+      return;
+    }
     setCreateState("loading");
     try {
       const res = await fetch("/api/ontology/create", {
@@ -590,14 +634,60 @@ function CreateNewPanel({ onLoaded }: { onLoaded: () => void }) {
       )}
 
       {createMode === "text" && (
-        <FieldGroup label="Schema Requirements (natural language)">
-          <Textarea
-            value={schemaText}
-            onChange={setSchemaText}
-            placeholder="Describe the ontology you need. E.g.: I need an ontology for a hospital domain with patients, doctors, appointments, and medications."
-            rows={6}
-          />
-        </FieldGroup>
+        <>
+          <FieldGroup label="Schema Requirements (natural language)">
+            <Textarea
+              value={schemaText}
+              onChange={setSchemaText}
+              placeholder="Describe the ontology you need. E.g.: I need an ontology for a hospital domain with patients, doctors, appointments, and medications."
+              rows={6}
+            />
+          </FieldGroup>
+
+          <div style={llmConfigBoxStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ color: "#ebf3ff", fontSize: 12, fontWeight: 800 }}>Global LLM Configuration</div>
+                <div style={{ color: "#6a7f97", fontSize: 11, marginTop: 3 }}>
+                  Shared across Explorer. Credentials are managed once in Settings.
+                </div>
+              </div>
+              <button type="button" onClick={openGlobalLLMSettings} style={settingsButtonStyle}>
+                <Settings size={12} /> Manage
+              </button>
+            </div>
+
+            {llmSettingsState === "loading" ? (
+              <div style={llmSettingsMessageStyle}>
+                <Loader2 size={13} className="ws-spin" /> Checking global configuration…
+              </div>
+            ) : llmSettingsState === "error" ? (
+              <div style={{ ...llmSettingsMessageStyle, color: "#ff9e97" }}>
+                <AlertCircle size={13} /> Could not load global LLM settings.
+              </div>
+            ) : llmSettings?.configured ? (
+              <div style={llmSummaryGridStyle}>
+                <PreviewRow
+                  label="Provider"
+                  value={llmSettings.provider === "openai" ? "OpenAI-compatible" : "Anthropic / Claude"}
+                />
+                <PreviewRow label="Model" value={llmSettings.model || "Provider default"} mono />
+                <PreviewRow
+                  label="Credential"
+                  value={llmSettings.credential_source === "saved" ? "Saved securely" : "Backend environment"}
+                />
+                <PreviewRow
+                  label="Source"
+                  value={llmSettings.source === "saved" ? "Global Settings" : "Environment"}
+                />
+              </div>
+            ) : (
+              <div style={{ ...llmSettingsMessageStyle, color: "#f2b66d" }}>
+                <KeyRound size={13} /> No usable LLM credential configured. Open Settings to add one.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {createState === "success" && (
@@ -617,7 +707,15 @@ function CreateNewPanel({ onLoaded }: { onLoaded: () => void }) {
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           onClick={handleCreate}
-          disabled={!name.trim() || !namespace.trim() || createState === "loading"}
+          disabled={
+            !name.trim()
+            || !namespace.trim()
+            || createState === "loading"
+            || (
+              createMode === "text"
+              && (!schemaText.trim() || llmSettingsState !== "ready" || !llmSettings?.configured)
+            )
+          }
           style={primaryBtnStyle}
         >
           {createState === "loading" ? (
@@ -889,6 +987,53 @@ const errorBoxStyle: React.CSSProperties = {
   background: "rgba(255,157,175,0.06)",
   color: "#ff9daf",
   fontSize: 12,
+};
+
+const llmConfigBoxStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid rgba(127,208,255,0.14)",
+  background: "rgba(74,163,255,0.04)",
+};
+
+const settingsButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  padding: "6px 9px",
+  borderRadius: 8,
+  border: "1px solid rgba(127,208,255,0.18)",
+  background: "rgba(74,163,255,0.09)",
+  color: "#7fd0ff",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const llmSettingsMessageStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  padding: "9px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(127,208,255,0.11)",
+  background: "rgba(0,0,0,0.16)",
+  color: "#8fa8c6",
+  fontSize: 11,
+};
+
+const llmSummaryGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid rgba(76,195,138,0.16)",
+  background: "rgba(76,195,138,0.04)",
 };
 
 const modeTabBase: React.CSSProperties = {

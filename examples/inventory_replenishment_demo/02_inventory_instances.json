@@ -1,0 +1,143 @@
+{
+  "nodes": [
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#category_coffee_tea",
+      "type": "owl:NamedIndividual",
+      "content": "咖啡与茶饮",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#ProductCategory",
+        "businessType": "ProductCategory"
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#store_shanghai_01",
+      "type": "owl:NamedIndividual",
+      "content": "上海静安店",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#Store",
+        "businessType": "Store",
+        "storeCode": "SH-01",
+        "city": "上海"
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#supplier_yunnan",
+      "type": "owl:NamedIndividual",
+      "content": "云南山岚供应商",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#Supplier",
+        "businessType": "Supplier",
+        "supplierCode": "SUP-YN-01",
+        "leadTimeDays": 4,
+        "minOrderQuantity": 24
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "type": "owl:NamedIndividual",
+      "content": "山岚咖啡豆 500g",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#SKU",
+        "businessType": "SKU",
+        "skuCode": "COFFEE-500G",
+        "unit": "袋"
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#sku_tea_250g",
+      "type": "owl:NamedIndividual",
+      "content": "高山红茶 250g",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#SKU",
+        "businessType": "SKU",
+        "skuCode": "TEA-250G",
+        "unit": "盒"
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#inventory_coffee_shanghai_20260831",
+      "type": "owl:NamedIndividual",
+      "content": "山岚咖啡豆上海静安店库存快照",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#InventoryRecord",
+        "businessType": "InventoryRecord",
+        "currentInventory": 18,
+        "safetyStock": 30,
+        "targetInventory": 66,
+        "dailyAverageSales": 12,
+        "snapshotDate": "2026-08-31"
+      }
+    },
+    {
+      "id": "https://example.org/ontology/inventory-replenishment#inventory_tea_shanghai_20260831",
+      "type": "owl:NamedIndividual",
+      "content": "高山红茶上海静安店库存快照",
+      "properties": {
+        "source_ontology": "https://example.org/ontology/inventory-replenishment",
+        "rdf:type": "https://example.org/ontology/inventory-replenishment#InventoryRecord",
+        "businessType": "InventoryRecord",
+        "currentInventory": 80,
+        "safetyStock": 35,
+        "targetInventory": 70,
+        "dailyAverageSales": 10,
+        "snapshotDate": "2026-08-31"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "target": "https://example.org/ontology/inventory-replenishment#category_coffee_tea",
+      "type": "belongsToCategory",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#sku_tea_250g",
+      "target": "https://example.org/ontology/inventory-replenishment#category_coffee_tea",
+      "type": "belongsToCategory",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "target": "https://example.org/ontology/inventory-replenishment#supplier_yunnan",
+      "type": "suppliedBy",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#sku_tea_250g",
+      "target": "https://example.org/ontology/inventory-replenishment#supplier_yunnan",
+      "type": "suppliedBy",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#inventory_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#sku_coffee_500g",
+      "type": "inventoryForSKU",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#inventory_coffee_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#store_shanghai_01",
+      "type": "inventoryAtStore",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#inventory_tea_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#sku_tea_250g",
+      "type": "inventoryForSKU",
+      "weight": 1.0
+    },
+    {
+      "source": "https://example.org/ontology/inventory-replenishment#inventory_tea_shanghai_20260831",
+      "target": "https://example.org/ontology/inventory-replenishment#store_shanghai_01",
+      "type": "inventoryAtStore",
+      "weight": 1.0
+    }
+  ]
+}

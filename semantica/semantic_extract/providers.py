@@ -70,9 +70,11 @@ License: MIT
 """
 
 import json
+import os
 import threading
 import time
 from typing import Any, Dict, List, Optional, Union, Type
+from urllib.parse import urlparse
 
 try:
     from pydantic import BaseModel, ValidationError
@@ -1129,13 +1131,17 @@ class AnthropicProvider(BaseProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "claude-3-sonnet-20240229",
+        auth_token: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
         **kwargs,
     ):
         """Initialize Anthropic provider."""
         super().__init__(**kwargs)
         self.api_key = api_key or config.get_api_key("anthropic")
-        self.model = model
+        self.auth_token = auth_token or os.getenv("ANTHROPIC_AUTH_TOKEN")
+        self.model = model or os.getenv("ANTHROPIC_MODEL") or "claude-3-sonnet-20240229"
+        self.base_url = base_url or os.getenv("ANTHROPIC_BASE_URL")
         self.client = None
         self._init_client()
 
@@ -1144,8 +1150,22 @@ class AnthropicProvider(BaseProvider):
         try:
             from anthropic import Anthropic
 
+            client_kwargs: Dict[str, Any] = {}
             if self.api_key:
-                self.client = Anthropic(api_key=self.api_key)
+                client_kwargs["api_key"] = self.api_key
+            elif self.auth_token:
+                client_kwargs["auth_token"] = self.auth_token
+
+            if self.base_url:
+                scheme = urlparse(self.base_url).scheme
+                if scheme not in ("http", "https"):
+                    raise ValueError(
+                        f"AnthropicProvider base_url must use http or https, got {scheme!r}."
+                    )
+                client_kwargs["base_url"] = self.base_url
+
+            if client_kwargs:
+                self.client = Anthropic(**client_kwargs)
         except (ImportError, OSError):
             self.client = None
             self.logger.warning(
@@ -1156,11 +1176,45 @@ class AnthropicProvider(BaseProvider):
         """Check if provider is available."""
         return self.client is not None
 
+    @staticmethod
+    def _extract_response_text(response: Any) -> str:
+        """Return text blocks while ignoring thinking and tool-use blocks."""
+        content = getattr(response, "content", None)
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, dict):
+            blocks = [content]
+        elif isinstance(content, (list, tuple)):
+            blocks = content
+        elif content is None:
+            blocks = []
+        else:
+            blocks = [content]
+
+        text_parts: List[str] = []
+        for block in blocks:
+            text = block.get("text") if isinstance(block, dict) else getattr(block, "text", None)
+            if isinstance(text, str) and text:
+                text_parts.append(text)
+
+        if not text_parts:
+            block_types = [
+                str(block.get("type", "dict"))
+                if isinstance(block, dict)
+                else str(getattr(block, "type", type(block).__name__))
+                for block in blocks
+            ]
+            detail = f" Received block types: {', '.join(block_types)}." if block_types else ""
+            raise ProcessingError(f"Anthropic response contained no text block.{detail}")
+
+        return "".join(text_parts)
+
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate text from prompt."""
         if not self.client:
             raise ProcessingError(
-                "Anthropic client not initialized. Set ANTHROPIC_API_KEY or pass api_key."
+                "Anthropic client not initialized. Set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN."
             )
 
         # Anthropic requires max_tokens.
@@ -1169,7 +1223,7 @@ class AnthropicProvider(BaseProvider):
 
         # Prepare arguments
         create_kwargs = {
-            "model": kwargs.get("model", self.model),
+            "model": kwargs.get("model") or self.model,
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }
@@ -1187,7 +1241,7 @@ class AnthropicProvider(BaseProvider):
                 create_kwargs[param] = kwargs[param]
 
         response = self.client.messages.create(**create_kwargs)
-        return response.content[0].text
+        return self._extract_response_text(response)
 
     def generate_structured(self, prompt: str, **kwargs) -> Union[dict, list]:
         """Generate structured output."""
@@ -1201,7 +1255,7 @@ class AnthropicProvider(BaseProvider):
 
         # Prepare arguments
         create_kwargs = {
-            "model": kwargs.get("model", self.model),
+            "model": kwargs.get("model") or self.model,
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": json_prompt}],
         }
@@ -1220,7 +1274,7 @@ class AnthropicProvider(BaseProvider):
 
         response = self.client.messages.create(**create_kwargs)
         try:
-            return self._parse_json(response.content[0].text)
+            return self._parse_json(self._extract_response_text(response))
         except Exception as e:
             raise ProcessingError(f"Failed to parse JSON from Anthropic response: {e}")
 

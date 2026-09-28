@@ -1,0 +1,48 @@
+{
+  "nodes": [
+    {
+      "id": "Alice",
+      "type": "Person",
+      "properties": {
+        "age": 30,
+        "role": "Developer"
+      }
+    },
+    {
+      "id": "Bob",
+      "type": "Person",
+      "properties": {
+        "age": 35,
+        "role": "Manager"
+      }
+    },
+    {
+      "id": "ProjectX",
+      "type": "Project",
+      "properties": {
+        "status": "Active",
+        "name": "Project X"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "Alice",
+      "target": "ProjectX",
+      "type": "works_on",
+      "properties": {
+        "since": "2024-01"
+      }
+    },
+    {
+      "source": "Bob",
+      "target": "ProjectX",
+      "type": "manages"
+    },
+    {
+      "source": "Alice",
+      "target": "Bob",
+      "type": "reports_to"
+    }
+  ]
+}

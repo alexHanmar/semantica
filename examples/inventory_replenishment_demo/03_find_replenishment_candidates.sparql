@@ -1,0 +1,38 @@
+PREFIX prop: <http://semantica.local/prop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT
+  ?inventory
+  ?sku
+  ?skuName
+  ?store
+  ?storeName
+  ?supplier
+  ?supplierName
+  ?current
+  ?safety
+  ?target
+  ?dailySales
+  ?leadTimeDays
+  ?minOrderQuantity
+  (?target - ?current AS ?baseOrderQuantity)
+WHERE {
+  ?inventory prop:inventoryForSKU ?sku ;
+             prop:inventoryAtStore ?store ;
+             prop:currentInventory ?current ;
+             prop:safetyStock ?safety ;
+             prop:targetInventory ?target ;
+             prop:dailyAverageSales ?dailySales .
+
+  ?sku rdfs:label ?skuName ;
+       prop:suppliedBy ?supplier .
+
+  ?store rdfs:label ?storeName .
+
+  ?supplier rdfs:label ?supplierName ;
+            prop:leadTimeDays ?leadTimeDays ;
+            prop:minOrderQuantity ?minOrderQuantity .
+
+  FILTER (?current < ?safety)
+}
+ORDER BY (?current / ?dailySales)
